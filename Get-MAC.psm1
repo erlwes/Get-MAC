@@ -148,15 +148,16 @@ function Search-OUIFile {
 }
 
 function Get-MAC {
-    Param(
-        [string]$MacDBFolder = "$(($profile | Split-Path))\Lookups",
-        [string]$OUI
+    Param(        
+        [string]$OUI,
+        [string]$MacDBFolder = "$(($profile | Split-Path))\Lookups"
     )
 
     $OuiFile = "$MacDBFolder\ouiMap.xml" -replace "\\\\", '\'
+    Write-Host "Looking for '$OuiFile'."
 
     if (Test-Path $OuiFile) {
-        Write-Host "Working vs. '$OuiFile"
+        Write-Host "Found '$OuiFile'."
 
         $NormalizedOUI = Test-MacOui $OUI
 
@@ -181,9 +182,7 @@ function Get-MAC {
         }
     }
     else {
-        Write-Host "OUI file for MAC-addresses not found - running 'Update-MacDatabase'"
-        Update-MACDatabase
-        Get-MAC -MacDBFolder $MacDBFolder -OUI $OUI
+        Write-Host "Not able to find '$OuiFile'."
     }    
 }
 function Get-MACGui {
