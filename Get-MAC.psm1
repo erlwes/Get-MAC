@@ -10,18 +10,18 @@
 
 .EXAMPLE
     To download offline copy of OUI MAC-database
-    Update-MacDatabase
+    Update-MACDatabase
 
 .EXAMPLE
     To search offline MAC-database
-    Get-MacInfo -OUI '08:EA:44'    
+    Get-MAC -OUI '08:EA:44'    
 
 .EXAMPLE
     To open a graphical interface for searching MAC-addresses
-    Get-MacInfoGUI
+    Get-MACGui
     
 #>
-function Test-MacOui {
+function Test-MACOui {
     param([string]$InputString)
 
     # Accpets full MAC (6 bytes) or OUI (3 bytes)
@@ -57,7 +57,7 @@ function New-DirectoryIfNotExist {
     }
 }
 
-function Update-MacDatabase {
+function Update-MACDatabase {
     Param([string]$MacDBFolder = "$(($profile | Split-Path))\Lookups")
     $wr = (Invoke-WebRequest -Uri https://standards-oui.ieee.org/)
     $lines = (($wr | Select-Object -ExpandProperty Content) -split "`n") | Select-Object -Skip 3
@@ -147,7 +147,7 @@ function Search-OUIFile {
     }
 }
 
-function Get-MacInfo {
+function Get-MAC {
     Param(
         [string]$MacDBFolder = "$(($profile | Split-Path))\Lookups",
         [string]$OUI
@@ -182,11 +182,11 @@ function Get-MacInfo {
     }
     else {
         Write-Host "OUI file for MAC-addresses not found - running 'Update-MacDatabase'"
-        Update-MacDatabase
-        Get-MacInfo -MacDBFolder $MacDBFolder -OUI $OUI
+        Update-MACDatabase
+        Get-MAC -MacDBFolder $MacDBFolder -OUI $OUI
     }    
 }
-function Get-MacInfoGUI {
+function Get-MACGui {
     param(
         [string]$MacDBFolder = "$(($profile | Split-Path))\Lookups"
     )
