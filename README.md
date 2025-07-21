@@ -13,7 +13,7 @@ Install-Script -Name Get-MAC
 
 ## 🚀 Quickstart
 
-## Create local DB + CLI lookup
+### Create local DB + CLI lookup
 
 ```powershell
 Update-MACdatabase -VerboseLogging
@@ -21,7 +21,7 @@ Get-MAC 08:EA:44
 ```
 <img width="826" height="201" alt="image" src="https://github.com/user-attachments/assets/ff39e4da-30d1-488f-8f6f-462aeffa3955" />
 
-## GUI lookup
+### GUI lookup
 
 ```powershell
 Get-MACGui
