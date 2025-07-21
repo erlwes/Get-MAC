@@ -12,7 +12,7 @@
 RootModule = 'Get-MAC.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.2'
+ModuleVersion = '1.0.4'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -27,7 +27,7 @@ Author = 'Erlend Westervik'
 CompanyName = '-'
 
 # Copyright statement for this module
-Copyright = '(c) Erlend Westervik. All rights reserved.'
+Copyright = 'None'
 
 # Description of the functionality provided by this module
 Description = 'Looks up OUI/MAC address vendors and displays them via CLI or GUI.'
@@ -69,11 +69,10 @@ Description = 'Looks up OUI/MAC address vendors and displays them via CLI or GUI
 # NestedModules = @()
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-FunctionsToExport = 'Get-MACGui', 'New-DirectoryIfNotExist', 'Search-OUIFile', 
-               'Test-MACOui', 'Get-MAC', 'Update-MACDatabase'
+FunctionsToExport = @('Update-MACDatabase', 'Get-MAC', 'Get-MACGui')
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
-CmdletsToExport = '*'
+CmdletsToExport = @('Update-MACDatabase', 'Get-MAC', 'Get-MACGui')
 
 # Variables to export from this module
 VariablesToExport = '*'
@@ -130,4 +129,3 @@ PrivateData = @{
 # DefaultCommandPrefix = ''
 
 }
-
