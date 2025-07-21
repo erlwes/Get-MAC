@@ -21,6 +21,40 @@
     Get-MACGui
     
 #>
+
+function Write-Console {
+    param(
+        [ValidateSet(0, 1, 2, 3, 4)]
+        [int]$Level,
+
+        [Parameter(Mandatory=$true)]
+        [string]$Message
+    )
+    $Message = $Message.Replace("`r",'').Replace("`n",' ')
+    switch ($Level) {
+        0 { $Status = 'Info'        ;$FGColor = 'White'   }
+        1 { $Status = 'Success'     ;$FGColor = 'Green'   }
+        2 { $Status = 'Warning'     ;$FGColor = 'Yellow'  }
+        3 { $Status = 'Error'       ;$FGColor = 'Red'     }
+        4 { $Status = 'Highlight'   ;$FGColor = 'Gray'    }
+        Default { $Status = ''      ;$FGColor = 'Black'   }
+    }
+    if ($VerboseLogging) {
+        Write-Host "$((Get-Date).ToString()) " -ForegroundColor 'DarkGray' -NoNewline
+        Write-Host "$Status" -ForegroundColor $FGColor -NoNewline
+
+        if ($level -eq 4) {
+            Write-Host ("`t " + $Message) -ForegroundColor 'Cyan'
+        }
+        else {
+            Write-Host ("`t " + $Message) -ForegroundColor 'White'
+        }
+    }
+    if ($Level -eq 3) {
+        $LogErrors += $Message
+    }
+}
+
 function Test-MACOui {
     param([string]$InputString)
 
@@ -49,23 +83,35 @@ function New-DirectoryIfNotExist {
     if (!(Test-Path $Path)) {
         try {
             New-Item -ItemType Directory -Path $Path -ErrorAction Stop | Out-Null
-            #Success
+            Write-Console -Level 1 -Message "New-Item - Directory created: '$Path'"
         }
         catch {
-            #Fail
+            Write-Console -Level 3 -Message "New-Item - Failed to create new directory '$Path'. Error: $($_.Exception.Message)"
         }
     }
 }
 
 function Update-MACDatabase {
-    Param([string]$MacDBFolder = "$(($profile | Split-Path))\Lookups")
-    $wr = (Invoke-WebRequest -Uri https://standards-oui.ieee.org/)
+    Param(
+        [string]$MacDBFolder = "$(($profile | Split-Path))\Lookups",
+        [switch]$VerboseLogging = $false
+    )
+    try {
+        $wr = (Invoke-WebRequest -Uri https://standards-oui.ieee.org/ -ErrorAction Stop)
+        Write-Console -Level 1 -Message "Invoke-WebRequest - Downloaded OUI from IEEE. Statuscode: $($wr.StatusCode)"        
+    }
+    catch {
+        Write-Console -Level 3 -Message "Invoke-WebRequest - Failed to download OUI from IEEE. Statuscode: $($wr.StatusCode). Error: $($_.Exception.Message)"
+        Break
+    }
+
     $lines = (($wr | Select-Object -ExpandProperty Content) -split "`n") | Select-Object -Skip 3
+    Write-Console -Level 0 -Message "The downloaded OUI-file contains $($lines.count) lines"
 
     $OuiMap = @{}
     $Block = @()
     $OuiFile = "$MacDBFolder\ouiMap.xml" -replace "\\\\", '\'
-    Write-Host "Working vs. '$OuiFile"
+    Write-Console -Level 0 -Message "Local DB - Using following path '$OuiFile"
 
     New-DirectoryIfNotExist -Path $OuiFile
 
@@ -125,14 +171,14 @@ function Update-MACDatabase {
             $ouiMap[$parsed.ouiBase16] = $parsed
         }
     }
-    Write-Host "Parsed entries: $($ouiMap.Count)"
+    Write-Console -Level 0 -Message "Local DB - Parsed entries from OUI-file: $($ouiMap.Count)"
 
     try {
         $ouiMap | Export-Clixml -Path "$OuiFile" -Force -ErrorAction Stop
-        Write-Host "Export success" -ForegroundColor Green
+        Write-Console -Level 1 -Message "Local DB - Saved hashtable for offline lookups (Export-CliXml)"
     }
     catch {
-        Write-Host $_.Exception.Message -ForegroundColor Red
+        Write-Console -Level 3 -Message "Local DB - Failed to save hashtable. Error: $($_.Exception.Message)"
     }
 }
 
@@ -140,9 +186,11 @@ function Search-OUIFile {
     Param([string]$lookupKey)
     if ($ouiMap.ContainsKey($lookupKey)) {
         $data = $ouiMap[$lookupKey]
+        Write-Console -Level 1 -Message "Local DB - Search-OUIFile: Found results for OUI '$lookupKey' in file"
         return [pscustomobject]$data
 
-    } else {        
+    } else {       
+        Write-Console -Level 0 -Message "Local DB - Search-OUIFile: No results for OUI '$lookupKey' in file"
         Return $null
     }
 }
@@ -150,14 +198,15 @@ function Search-OUIFile {
 function Get-MAC {
     Param(        
         [string]$OUI,
-        [string]$MacDBFolder = "$(($profile | Split-Path))\Lookups"
+        [string]$MacDBFolder = "$(($profile | Split-Path))\Lookups",
+        [switch]$VerboseLogging = $false
     )
 
     $OuiFile = "$MacDBFolder\ouiMap.xml" -replace "\\\\", '\'
-    Write-Host "Looking for '$OuiFile'."
+    Write-Console -Level 0 -Message "Local DB - Get-MAC: Using following path '$OuiFile"
 
-    if (Test-Path $OuiFile) {
-        Write-Host "Found '$OuiFile'."
+    if (Test-Path $OuiFile) {        
+        Write-Console -Level 1 -Message "Local DB - Get-MAC: File found"
 
         $NormalizedOUI = Test-MacOui $OUI
 
@@ -165,11 +214,13 @@ function Get-MAC {
             if(!$ouiMap) {
                 try {                
                     $ouiMap = Import-Clixml -Path $OuiFile -ErrorAction Stop
+                    Write-Console -Level 1 -Message "Local DB - Import-Clixml: File imported as hashtable"
                     $result = Search-OUIFile -lookupKey $NormalizedOUI
                     return $result
                 }
                 catch {
-                    #
+                    Write-Console -Level 3 -Message "Local DB - Import-Clixml: Failed to imported file. Error: $($_.Exception.Message)"
+                    Break
                 }
             }
             else {
@@ -181,13 +232,16 @@ function Get-MAC {
             #
         }
     }
-    else {
-        Write-Host "Not able to find '$OuiFile'."
+    else {        
+        Write-Console -Level 2 -Message "Local DB - Get-MAC: File not found. Please run 'Update-MACDatabase'"
+        Write-Warning "Local DB - Get-MAC: File not found. Please run 'Update-MACDatabase'"
     }    
 }
+
 function Get-MACGui {
     param(
-        [string]$MacDBFolder = "$(($profile | Split-Path))\Lookups"
+        [string]$MacDBFolder = "$(($profile | Split-Path))\Lookups",
+        [switch]$VerboseLogging = $false
     )
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
@@ -251,3 +305,5 @@ function Get-MACGui {
     # Run the form
     [void]$form.ShowDialog()
 }
+
+Export-ModuleMember -Function 'Update-MACDatabase', 'Get-MAC', 'Get-MACGui'
