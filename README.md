@@ -26,7 +26,7 @@ Get-MAC 08:EA:44
 ```powershell
 Get-MACGui
 ```
-![](https://github.com/user-attachments/assets/cd759099-d251-4fff-b0d8-d5f3dccb9066)
+![GUI version](https://github.com/user-attachments/assets/cd759099-d251-4fff-b0d8-d5f3dccb9066)
 
 ---
 
