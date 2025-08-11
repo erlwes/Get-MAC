@@ -6,7 +6,7 @@ Module for looking up OUI/MAC address vendors/organistaions. Works offline once 
 
 ## 📦 Installation
 ```powershell
-Install-Script -Name Get-MAC
+Install-Module -Name Get-MAC
 ```
 
 ---
