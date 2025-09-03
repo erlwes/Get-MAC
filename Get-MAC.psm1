@@ -19,7 +19,20 @@
 .EXAMPLE
     To open a graphical interface for searching MAC-addresses
     Get-MACGui
-    
+
+.EXAMPLE
+    Get vendor for all local networkadapters
+    Get-NetAdapter | select -ExpandProperty MacAddress | Get-MAC
+
+
+.EXAMPLE
+    Get vendor for all MAC-addresses in ARP
+    Get-NetNeighbor | select -ExpandProperty LinkLayerAddress -Unique | ? {$_} | Get-MAC
+
+.EXAMPLE
+    Get vendor for all MAC in array
+    $MAC = @('00.10.20','00-11-21','00:12:22','001323','00-14-24','00:15:25')
+    $MAC | Get-Mac
 #>
 
 function Write-Console {
@@ -61,9 +74,9 @@ function Test-MACOui {
     # Accpets full MAC (6 bytes) or OUI (3 bytes)
     # Allows colon and hyphen as separator, or no separators
 
-    if ($InputString -match '^([0-9A-Fa-f]{2}([-:]?)([0-9A-Fa-f]{2}\2){1,4}[0-9A-Fa-f]{2})$') {
+    if ($InputString -match '^([0-9A-Fa-f]{2}([-:.]?)([0-9A-Fa-f]{2}\2){1,4}[0-9A-Fa-f]{2})$') {
         # Normalize: Remove all separators, uppercase
-        $NormalizedInputString = (($InputString -replace '[-:]', '').ToUpper())[0..5] -join ''        
+        $NormalizedInputString = (($InputString -replace '[-:.]', '').ToUpper())[0..5] -join ''        
         return $NormalizedInputString
     }
     else {
@@ -197,26 +210,21 @@ function Search-OUIFile {
 
 function Get-MAC {
     Param(        
-        [string]$OUI,
-        [string]$MacDBFolder = "$(($profile | Split-Path))\Lookups",
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true)][string]$OUI,
+        [string]$MacDBFolder = "$(($profile | Split-Path))\Lookups",        
         [switch]$VerboseLogging = $false
     )
 
-    $OuiFile = "$MacDBFolder\ouiMap.xml" -replace "\\\\", '\'
-    Write-Console -Level 0 -Message "Local DB - Get-MAC: Using following path '$OuiFile"
+    Begin {
+        $OuiFile = "$MacDBFolder\ouiMap.xml" -replace "\\\\", '\'
+        Write-Console -Level 0 -Message "Local DB - Get-MAC: Using following path '$OuiFile"
 
-    if (Test-Path $OuiFile) {        
-        Write-Console -Level 1 -Message "Local DB - Get-MAC: File found"
-
-        $NormalizedOUI = Test-MacOui $OUI
-
-        if ($NormalizedOUI) {
+        if (Test-Path $OuiFile) {
+            Write-Console -Level 1 -Message "Local DB - Get-MAC: File found"            
             if(!$ouiMap) {
                 try {                
                     $ouiMap = Import-Clixml -Path $OuiFile -ErrorAction Stop
-                    Write-Console -Level 1 -Message "Local DB - Import-Clixml: File imported as hashtable"
-                    $result = Search-OUIFile -lookupKey $NormalizedOUI
-                    return $result
+                    Write-Console -Level 1 -Message "Local DB - Import-Clixml: File imported as hashtable"                        
                 }
                 catch {
                     Write-Console -Level 3 -Message "Local DB - Import-Clixml: Failed to imported file. Error: $($_.Exception.Message)"
@@ -224,18 +232,30 @@ function Get-MAC {
                 }
             }
             else {
-                $result = Search-OUIFile -lookupKey $NormalizedOUI
-                return $result
-            }
+                # OK :)
+            }            
         }
-        else {
-            #
+        else {        
+            Write-Console -Level 2 -Message "Local DB - Get-MAC: File not found. Please run 'Update-MACDatabase'"
+            Write-Warning "Local DB - Get-MAC: File not found. Please run 'Update-MACDatabase'"
+        }
+
+        $NormalizedOUIs = @()
+
+    }
+    Process {        
+        $OUI | ForEach-Object {
+            $NormalizedOUIs += Test-MacOui $OUI
         }
     }
-    else {        
-        Write-Console -Level 2 -Message "Local DB - Get-MAC: File not found. Please run 'Update-MACDatabase'"
-        Write-Warning "Local DB - Get-MAC: File not found. Please run 'Update-MACDatabase'"
-    }    
+    End {
+        $Results = @()
+        Foreach ($NOUI in $NormalizedOUIs) {
+            $Results += Search-OUIFile -lookupKey $NOUI
+        }
+        return $Results
+    }
+     
 }
 
 function Get-MACGui {
@@ -243,6 +263,7 @@ function Get-MACGui {
         [string]$MacDBFolder = "$(($profile | Split-Path))\Lookups",
         [switch]$VerboseLogging = $false
     )
+    
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
 
@@ -255,42 +276,88 @@ function Get-MACGui {
     }
 
     $ouiMap = Import-Clixml $OuiFile
-   
+
     # Create Form
     $form = New-Object Windows.Forms.Form
     $form.Text = "MAC Address Lookup"
-    $form.Size = New-Object Drawing.Size(700, 200)
+    $form.StartPosition   = 'CenterScreen'
+    $form.Size = New-Object Drawing.Size(400, 200)
     $form.StartPosition = "CenterScreen"
+    $form.FormBorderStyle = 'None'
+    $form.TopMost         = $true    
+    $form.BackColor       = [System.Drawing.Color]::Fuchsia
+    $form.TransparencyKey = [System.Drawing.Color]::Fuchsia
+    $form.Opacity         = 0.88
+
+    $panel           = New-Object System.Windows.Forms.Panel
+    $panel.Dock      = 'Fill'
+    $panel.BackColor = [System.Drawing.Color]::FromArgb(32,32,32)  # dark
+    $panel.Padding   = New-Object System.Windows.Forms.Padding(16) # <-- fixed
+    $form.Controls.Add($panel)
+
+    # Title
+    $title = New-Object System.Windows.Forms.Label
+    $title.Text      = "Get-Mac"
+    $title.AutoSize  = $true
+    $title.Font      = New-Object System.Drawing.Font('Segoe UI', 12)
+    $title.ForeColor = [System.Drawing.Color]::FromArgb(230,230,230)
+    $title.Location  = New-Object System.Drawing.Point(16, 16)
+    $panel.Controls.Add($title)
 
     # Search Label
     $label = New-Object Windows.Forms.Label
-    $label.Text = "Enter MAC or OUI:"
-    $label.Location = New-Object Drawing.Point(10, 20)
+    $label.Text = "Search MAC or OUI:"
+    $label.Font = New-Object System.Drawing.Font('Segoe UI', 10)
+    $label.ForeColor = [System.Drawing.Color]::FromArgb(230,230,230)
+    $label.Location = New-Object Drawing.Point(16, 60)
     $label.AutoSize = $true
-    $form.Controls.Add($label)
+    $panel.Controls.Add($label)
 
     # Textbox for MAC input
     $textBox = New-Object Windows.Forms.TextBox
-    $textBox.Location = New-Object Drawing.Point(130, 16)
+    $textBox.Location = New-Object Drawing.Point(150, 60)
     $textBox.Width = 120
-    $form.Controls.Add($textBox)
+    $panel.Controls.Add($textBox)
 
     # Result label
     $resultLabel = New-Object Windows.Forms.Label
     $resultLabel.Text = "Please start typing in input field above :)"
-    $resultLabel.Location = New-Object Drawing.Point(10, 60)
+    $resultLabel.Location = New-Object Drawing.Point(16, 100)
     $resultLabel.Size = New-Object Drawing.Size(560, 80)
+    $resultLabel.ForeColor = [System.Drawing.Color]::FromArgb(230,230,230)
     $resultLabel.AutoSize = $false
     $resultLabel.TextAlign = "TopLeft"
-    $form.Controls.Add($resultLabel)
+    $panel.Controls.Add($resultLabel)
+
+    $closeBtn = New-Object System.Windows.Forms.Button
+    $closeBtn.Text = "✕"
+    $closeBtn.Font = New-Object System.Drawing.Font('Segoe UI', 10)
+    $closeBtn.Size = New-Object System.Drawing.Size(34, 30)
+    $closeBtn.FlatStyle = 'Flat'
+    $closeBtn.FlatAppearance.BorderSize = 0
+    $closeBtn.BackColor = [System.Drawing.Color]::FromArgb(55,55,55)
+    $closeBtn.ForeColor = [System.Drawing.Color]::FromArgb(230,230,230)
+    $closeBtn.Location = New-Object System.Drawing.Point(($form.ClientSize.Width - 50), 16)
+    $closeBtn.Anchor = 'Top,Right'
+    $closeBtn.Add_MouseEnter({ $closeBtn.BackColor = [System.Drawing.Color]::FromArgb(75,75,75) })
+    $closeBtn.Add_MouseLeave({ $closeBtn.BackColor = [System.Drawing.Color]::FromArgb(55,55,55) })
+    $closeBtn.Add_Click({ $form.Close() })
+    $panel.Controls.Add($closeBtn)
 
     # Lookup logic triggered on each keypress
     $textBox.Add_TextChanged({        
-        $Normalised = Test-MacOui -InputString ($textBox.Text)
+        $Normalised = Test-MacOui -InputString ($textBox.Text -replace "(\.|-|:)\d$" -replace "(\.|-|:)$")
 
         if ($Normalised) {
             $Result = Search-OUIFile -lookupKey $Normalised
             if ($Result) {
+                
+                $Width = ($Result.Address).length * 8
+                if ($Width -gt 400) {
+                    $form.Size = New-Object Drawing.Size($Width, 200)
+                    $resultLabel.Size = New-Object Drawing.Size($Width, 80)
+                }
+                
                 $resultLabel.Text = "OuiHex: $($Result.OuiHex)`nOrganization: $($Result.Org)`nAddress: $($Result.Address)"
             }
             else {
@@ -302,7 +369,24 @@ function Get-MACGui {
         }
     })
 
+    # Make form draggable
+    $mouseDown = $false
+    $offset    = [System.Drawing.Point]::Empty
+    $startDrag = {
+        $script:mouseDown = $true
+        $script:offset = [System.Drawing.Point]::Subtract([System.Windows.Forms.Cursor]::Position, $form.Location)
+    }
+    $doDrag = {
+        if ($script:mouseDown) {
+            $form.Location = [System.Drawing.Point]::Subtract([System.Windows.Forms.Cursor]::Position, $script:offset)
+        }
+    }
+    $stopDrag = { $script:mouseDown = $false }
+    $form.Add_MouseDown($startDrag);  $form.Add_MouseMove($doDrag);  $form.Add_MouseUp($stopDrag)
+    $panel.Add_MouseDown($startDrag); $panel.Add_MouseMove($doDrag); $panel.Add_MouseUp($stopDrag)
+
     # Run the form
+    [System.Windows.Forms.Application]::EnableVisualStyles()
     [void]$form.ShowDialog()
 }
 
