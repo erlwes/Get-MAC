@@ -17,9 +17,18 @@ Install-Module -Name Get-MAC
 
 ```powershell
 Update-MACdatabase -VerboseLogging
-Get-MAC 08:EA:44
+Get-MAC '08:EA:44'
 ```
 <img width="826" height="201" alt="image" src="https://github.com/user-attachments/assets/ff39e4da-30d1-488f-8f6f-462aeffa3955" />
+
+### Multi-lookup from pipeline
+
+```powershell
+$MAC = @('00.10.20','00-11-21','00:12:22','001323','00-14-24','00:15:25')
+$MAC | Get-Mac
+```
+<img width="898" height="240" alt="image" src="https://github.com/user-attachments/assets/e9beeb20-e743-48c1-bb95-a627d4e6c3b4" />
+
 
 ### GUI lookup
 
@@ -76,7 +85,5 @@ Opens a graphical user interface for MAC/OUI lookup.
 |------------------|----------|----------|-------------------------------------------------------------------|
 | `MacDBFolder`    | `String` | No       | Folder path to load the database (default: user's profile path)   |
 | `VerboseLogging` | `Switch` | No       | Enables verbose console output for debugging                      |
-
----
 
 ---
