@@ -35,7 +35,8 @@ $MAC | Get-Mac
 ```powershell
 Get-MACGui
 ```
-![record](https://github.com/user-attachments/assets/0c1ee640-b3f4-46e3-861e-2ecaa2c126a2)
+![Record](https://github.com/user-attachments/assets/524b1c1c-3a11-4852-940b-6618111d68ec)
+
 
 
 ---
