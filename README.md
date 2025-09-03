@@ -37,14 +37,14 @@ Get-MACGui
 ```
 ![Record](https://github.com/user-attachments/assets/524b1c1c-3a11-4852-940b-6618111d68ec)
 
-
-
 ---
 
 ## 📌 Features
  - Lookup MAC-vendor/company
  - No API key, no limiting or throttling
  - Works offline, after running `Update-MACdatabase` once
+ - GUI for live response
+ - Multiple inputs from pipeline
 
 ---
 
