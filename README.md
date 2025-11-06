@@ -48,6 +48,15 @@ Get-MACGui
 
 ---
 
+## 🔍 Sources
+| URL                                                         | Type |
+|-------------------------------------------------------------|------|
+| https://standards-oui.ieee.org/oui/oui.csv                  | MA-L |
+| https://standards-oui.ieee.org/oui28/mam.csv                | MA-M |
+| https://standards-oui.ieee.org/oui36/oui36.csv              | MA-S |
+| https://standards-oui.ieee.org/iab/iab.csv                  | IAB  |
+---
+
 ## 💻 Cmdlets
 
 ### `Update-MACDatabase`
