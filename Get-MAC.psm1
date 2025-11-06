@@ -71,12 +71,9 @@ function Write-Console {
 function Test-MACOui {
     param([string]$InputString)
 
-    # Accpets full MAC (6 bytes) or OUI (3 bytes)
-    # Allows colon and hyphen as separator, or no separators
-
-    if ($InputString -match '^([0-9A-Fa-f]{2}([-:.]?)([0-9A-Fa-f]{2}\2){1,4}[0-9A-Fa-f]{2})$') {
-        # Normalize: Remove all separators, uppercase
-        $NormalizedInputString = (($InputString -replace '[-:.]', '').ToUpper())[0..5] -join ''        
+    #Rough checks that input looks like a MAC-address and at least contains first 3 bytes, then normalize input (remove common separators)
+    if ($InputString -match '^([0-9A-Fa-f]{2}([-:.]?)){2,5}[0-9A-Fa-f]{1,2}$') {        
+        $NormalizedInputString = ($InputString -replace '[-:.]', '').ToUpper()
         return $NormalizedInputString
     }
     else {
@@ -106,89 +103,62 @@ function New-DirectoryIfNotExist {
 
 function Update-MACDatabase {
     Param(
-        [string]$MacDBFolder = "$(($profile | Split-Path))\Lookups",
+        [string]$MacDBFolder = (Join-Path (Split-Path $profile) 'Lookups'),
         [switch]$VerboseLogging = $false
     )
-    try {
-        $wr = (Invoke-WebRequest -Uri https://standards-oui.ieee.org/ -ErrorAction Stop)
-        Write-Console -Level 1 -Message "Invoke-WebRequest - Downloaded OUI from IEEE. Statuscode: $($wr.StatusCode)"        
-    }
-    catch {
-        Write-Console -Level 3 -Message "Invoke-WebRequest - Failed to download OUI from IEEE. Statuscode: $($wr.StatusCode). Error: $($_.Exception.Message)"
-        Break
-    }
 
-    $lines = (($wr | Select-Object -ExpandProperty Content) -split "`n") | Select-Object -Skip 3
-    Write-Console -Level 0 -Message "The downloaded OUI-file contains $($lines.count) lines"
+    # URLs to CSV-files @ IEEE
+    $urls = @(
+        'https://standards-oui.ieee.org/oui/oui.csv',       # MA-L
+        'https://standards-oui.ieee.org/oui28/mam.csv',     # MA-M
+        'https://standards-oui.ieee.org/oui36/oui36.csv',   # MA-S
+        'https://standards-oui.ieee.org/iab/iab.csv'        # IAB
+    )
 
-    $OuiMap = @{}
-    $Block = @()
-    $OuiFile = "$MacDBFolder\ouiMap.xml" -replace "\\\\", '\'
-    Write-Console -Level 0 -Message "Local DB - Using following path '$OuiFile"
+    # Create outputfolder, if not already present
+    $OuiFile = Join-Path $MacDBFolder 'ouiMap.xml'
+    New-DirectoryIfNotExist -Path $MacDBFolder
 
-    New-DirectoryIfNotExist -Path $OuiFile
+    # Download each csv-file and create a hashtable
+    $OUIHash = @{}
+    foreach ($url in $urls) {
+        try {
+            Write-Console -Level 1 -Message "Local DB - Downloading MAC-file '$url'..."
+            
+            $response = Invoke-WebRequest -Uri $url -UseBasicParsing
 
-    function ParseBlock {
-        param([string[]]$block)
-
-        if ($block.Count -lt 2) { return $null }
-        
-        $block = $block | ForEach-Object { $_.Trim() }
-
-        # 1st line: hex
-        if ($block[0] -match "^([0-9A-Fa-f\-]+)\s+\(hex\)\s+(.*)$") {
-            $ouiHex = $matches[1].ToUpper()
-            $org = $matches[2].Trim()
-        } else {
-            return $null
-        }
-
-        # 2nd line: base16
-        if ($block[1] -match "^([0-9A-Fa-f]+)\s+\(base 16\)\s+(.*)$") {
-            $ouiBase16 = $matches[1].ToUpper()
-        } else {
-            return $null
-        }
-
-        # Then address
-        $addressLines = $block[2..($block.Count - 1)] | Where-Object { $_ -ne "" }
-        $address = $addressLines -join ", "
-
-        return [PSCustomObject]@{
-            OuiHex      = $ouiHex
-            OuiBase16   = $ouiBase16
-            Org         = $org
-            Address     = $address
-        }
-    }
-
-    foreach ($line in $lines) {
-        # A new record starts when we see a line with "(hex)" — save previous block
-        if ($line -match "^\s*[0-9A-Fa-f\-]+\s+\(hex\)\s+") {
-            if ($block.Count -gt 0) {
-                # Process the previous block
-                $parsed = ParseBlock -block $block
-                if ($parsed) {
-                    $ouiMap[$parsed.ouiBase16] = $parsed
-                }
-                $block = @()
+            if ($response.Content -is [byte[]]) {
+                $csvContent = [System.Text.Encoding]::UTF8.GetString($response.Content)
             }
+            else {
+                $csvContent = [string]$response.Content
+            }
+
+            $rows = $csvContent | ConvertFrom-Csv -Delimiter ','
+
+            foreach ($row in $rows) {
+
+                $key = $row.'Assignment'
+
+                $OUIHash[$key] = @{
+                    Assignment = $key
+                    Org       = $row.'Organization Name'
+                    Address   = $row.'Organization Address'
+                }
+            }
+            Write-Console -Level 1 -Message "Local DB - Downloaded and parsed MAC-file '$url'"
         }
-        $block += $line
+        catch {
+            Write-Console -Level 3 -Message "Local DB - Failed to download/parse MAC-file '$url'. Error: $($_.Exception.Message)"
+        }
     }
 
-    # Handle final block
-    if ($block.Count -gt 0) {
-        $parsed = ParseBlock -block $block
-        if ($parsed) {
-            $ouiMap[$parsed.ouiBase16] = $parsed
-        }
-    }
-    Write-Console -Level 0 -Message "Local DB - Parsed entries from OUI-file: $($ouiMap.Count)"
+    Write-Console -Level 1 -Message "Local DB - Parsed $($OUIHash.Count) OUI entries in total"
 
+    # Export hashtable as CLI-XML for later use
     try {
-        $ouiMap | Export-Clixml -Path "$OuiFile" -Force -ErrorAction Stop
-        Write-Console -Level 1 -Message "Local DB - Saved hashtable for offline lookups (Export-CliXml)"
+        $OUIHash | Export-Clixml -Path $OuiFile -Force -Depth 3 -ErrorAction Stop
+        Write-Console -Level 1 -Message "Local DB - Saved hashtable for offline lookups ($OuiFile)"
     }
     catch {
         Write-Console -Level 3 -Message "Local DB - Failed to save hashtable. Error: $($_.Exception.Message)"
@@ -196,16 +166,29 @@ function Update-MACDatabase {
 }
 
 function Search-OUIFile {
-    Param([string]$lookupKey)
-    if ($ouiMap.ContainsKey($lookupKey)) {
-        $data = $ouiMap[$lookupKey]
-        Write-Console -Level 1 -Message "Local DB - Search-OUIFile: Found results for OUI '$lookupKey' in file"
-        return [pscustomobject]$data
+    param([string]$lookupKey)
 
-    } else {       
-        Write-Console -Level 0 -Message "Local DB - Search-OUIFile: No results for OUI '$lookupKey' in file"
-        Return $null
+    # Normalize input, since we accept different separators, but needs to match without separator vs. key in hashtable
+    $lookupKey = ($lookupKey -replace '[-:.]', '').ToUpper()
+
+    # Exact match
+    if ($ouiMap.ContainsKey($lookupKey)) {
+        Write-Console -Level 1 -Message "Local DB - Search-OUIFile: Exact match for '$lookupKey'"
+        return [pscustomobject]$ouiMap[$lookupKey]
     }
+
+    # Longest-prefix match (down to 6 hex chars/3 bytes)
+    for ($len = $lookupKey.Length; $len -ge 6; $len--) {
+        $prefix = $lookupKey.Substring(0, $len)
+        if ($ouiMap.ContainsKey($prefix)) {
+            Write-Console -Level 1 -Message "Local DB - Search-OUIFile: Prefix match '$prefix' for '$lookupKey'"
+            return [pscustomobject]$ouiMap[$prefix]
+        }
+    }
+
+    # No match
+    Write-Console -Level 0 -Message "Local DB - Search-OUIFile: No match for '$lookupKey'"
+    return $null
 }
 
 function Get-MAC {
@@ -215,6 +198,7 @@ function Get-MAC {
         [switch]$VerboseLogging = $false
     )
 
+    # Function designed for fast lookups of multiple MAC from pipleline (hashtable loads once)
     Begin {
         $OuiFile = "$MacDBFolder\ouiMap.xml" -replace "\\\\", '\'
         Write-Console -Level 0 -Message "Local DB - Get-MAC: Using following path '$OuiFile"
@@ -346,6 +330,7 @@ function Get-MACGui {
 
     # Lookup logic triggered on each keypress
     $textBox.Add_TextChanged({        
+        # I do normalize more often than nessasary... could shave of some nanoseconds for high volume lookups, I guess.
         $Normalised = Test-MacOui -InputString ($textBox.Text -replace "(\.|-|:)\d$" -replace "(\.|-|:)$")
 
         if ($Normalised) {
